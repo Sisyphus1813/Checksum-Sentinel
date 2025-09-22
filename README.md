@@ -14,7 +14,7 @@ This project is intended to serve as a **secure background service**: it silentl
   - [abuse.ch MalwareBazaar](https://bazaar.abuse.ch/) (persistent + recent)
   - [Community-maintained GitHub malicious hash lists](https://github.com/romainmarcoux/malicious-hash/) (recent only).
 
-- **Python Feed Poller** (`css_update.py`)
+- **Python Feed Poller** (`css_update/__init__.py`)
 
   - Fetches and merges hashes from multiple sources asynchronously via `aiohttp` + `asyncio`.
   - Handles both plain text and ZIP-compressed hash exports.
