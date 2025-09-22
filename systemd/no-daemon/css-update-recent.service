@@ -1,0 +1,6 @@
+[Unit]
+Description=Checksum-Sentinel recent database updater
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/css-update --update-recent
