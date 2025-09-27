@@ -23,7 +23,7 @@ This project is intended to serve as a **secure background service**: it silentl
     - **Persistent Hashes** (`/var/lib/css/persistent_hashes.txt`) → long-lived database of known bad hashes.
     - **Recent Hashes** (`/var/lib/css/hashes.txt`) → short-term / fast-updating database.
 
-- **Rust Monitoring Daemon** (`main.rs` → `css` binary)
+- **Rust Monitoring Daemon** (`css` binary)
 
   - Loads hash lists into memory (`HashSet`) for fast O(1) lookups.
   - Scans monitored directories for file hashes and YARA rules.
