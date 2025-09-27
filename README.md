@@ -203,5 +203,3 @@ Please ensure any submitted corpus data complies with applicable laws and does n
 
 This project is licensed under the GNU General Public License (GPL v3).\
 See the `LICENSE` file for full details.
-
-```
