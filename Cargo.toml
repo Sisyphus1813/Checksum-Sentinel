@@ -8,6 +8,8 @@ name = "css"
 path = "src/main.rs"
 
 [dependencies]
+digest = "0.10.7"
+generic-array = "0.14"
 md-5 = "0.10.6"
 notify = "8.2.0"
 notify-rust = "4.11.7"

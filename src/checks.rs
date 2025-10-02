@@ -13,43 +13,86 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 #![allow(unused_imports)]
-use std::fs::File;
-use std::io::{self, Read};
-use std::path::Path;
-use md5::digest::consts::False;
+
+use std::{
+    collections::HashSet,
+    fs::File,
+    io::{self, Read},
+    path::Path,
+    sync::mpsc,
+    thread,
+};
+use std::ops::Add;
 use md5::Md5;
 use sha1::Sha1;
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use yara::Rules;
-use std::collections::HashSet;
+use digest::{Digest as DigestTrait, OutputSizeUser};
+use generic_array::ArrayLength;
+
 use crate::data_handling::{load_hashes, load_rules};
 
+fn compute_hashes<P: AsRef<Path>>(path: P) -> io::Result<(String, String, String)> {
+    let path = path.as_ref();
+    let (tx_md5, rx_md5) = mpsc::channel::<Vec<u8>>();
+    let (tx_sha1, rx_sha1) = mpsc::channel::<Vec<u8>>();
+    let (tx_sha256, rx_sha256) = mpsc::channel::<Vec<u8>>();
+    let reader = {
+        let path = path.to_owned();
+        let txs = vec![tx_md5, tx_sha1, tx_sha256];
+        thread::spawn(move || -> io::Result<()> {
+            let mut file = File::open(path)?;
+            let mut buffer = [0u8; 8192];
+            loop {
+                let bytes_read = file.read(&mut buffer)?;
+                if bytes_read == 0 {
+                    break;
+                }
+                let chunk = buffer[..bytes_read].to_vec();
+                for tx in &txs {
+                    tx.send(chunk.clone()).unwrap();
+                }
+            }
+            drop(txs);
+            Ok(())
+        })
+    };
 
-
-fn compute_hash<P: AsRef<Path>>(path: P) -> io::Result<(String, String, String)> {
-    let mut file = File::open(path)?;
-    let mut buffer = [0u8; 8192];
-    let mut md5_hasher = Md5::new();
-    let mut sha1_hasher = Sha1::new();
-    let mut sha256_hasher = Sha256::new();
-    loop {
-        let bytes_read = file.read(&mut buffer)?;
-        if bytes_read == 0 {
-            break;
-        }
-        md5_hasher.update(&buffer[..bytes_read]);
-        sha1_hasher.update(&buffer[..bytes_read]);
-        sha256_hasher.update(&buffer[..bytes_read]);
+    fn spawn_hasher<H>(
+        rx: mpsc::Receiver<Vec<u8>>,
+    ) -> thread::JoinHandle<String>
+    where
+        H: DigestTrait + Send + 'static,
+        <H as OutputSizeUser>::OutputSize: ArrayLength<u8> + Add,
+        <<H as OutputSizeUser>::OutputSize as Add>::Output: ArrayLength<u8>,
+    {
+        thread::spawn(move || {
+            let mut hasher = H::new();
+            for chunk in rx {
+                hasher.update(&chunk);
+            }
+            format!("{:x}", hasher.finalize())
+        })
     }
-    let md5_str = format!("{:x}", md5_hasher.finalize());
-    let sha1_str = format!("{:x}", sha1_hasher.finalize());
-    let sha256_str = format!("{:x}", sha256_hasher.finalize());
-
-    Ok((md5_str, sha1_str, sha256_str))
+    let hashers = vec![
+        spawn_hasher::<Md5>(rx_md5),
+        spawn_hasher::<Sha1>(rx_sha1),
+        spawn_hasher::<Sha256>(rx_sha256),
+    ];
+    reader.join().unwrap()?;
+    let (md5, sha1, sha256) = {
+        let mut results = hashers
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .collect::<Vec<_>>();
+        (results.remove(0), results.remove(0), results.remove(0))
+    };
+    Ok((md5, sha1, sha256))
 }
 
+
 fn check_hash(file: &Path, known_hashes: &HashSet<String>) -> io::Result<bool> {
-    let (md5, sha1, sha256) = compute_hash(file)?;
+    let (md5, sha1, sha256) = compute_hashes(file)?;
     println!("MD5: {md5}\nSHA1: {sha1}\nSHA256: {sha256}\n");
     let md5_lower = md5.to_ascii_lowercase();
     let sha1_lower = sha1.to_ascii_lowercase();
