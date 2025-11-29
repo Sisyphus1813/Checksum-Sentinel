@@ -91,7 +91,7 @@ sudo systemctl enable --now css-update-recent.timer
 sudo systemctl enable --now css-update-persistent.timer
 ```
 
-Note that the system timers currently only update stored hashes. Yara rules must be updated from manually time to time (I reccomend once a month). Yara rule updates are not currently set up as a system service because the only polled source currently only updates sporatically. This will be mitigated or fixed in a future update.
+Note that the system timers currently only update stored hashes. Yara rules must be updated manually from time to time (I reccomend once a month). Yara rule updates are not currently set up as a system service because the only polled source currently only updates sporatically. This will be mitigated or fixed in a future update.
 
 ### Monitoring Daemon
 
