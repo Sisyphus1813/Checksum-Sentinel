@@ -9,7 +9,9 @@ path = "src/main.rs"
 
 [dependencies]
 digest = "0.10.7"
+env_logger = "0.11.8"
 generic-array = "0.14"
+log = "0.4.28"
 md-5 = "0.10.6"
 notify = "8.2.0"
 notify-rust = "4.11.7"

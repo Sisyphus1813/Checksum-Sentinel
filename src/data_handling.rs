@@ -12,12 +12,12 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use serde::Deserialize;
 use std::collections::HashSet;
 use std::error::Error;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use serde::Deserialize;
 use yara::{Compiler, Rules};
 
 #[derive(Deserialize)]

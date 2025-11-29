@@ -15,18 +15,30 @@
 mod checks;
 mod daemon;
 mod data_handling;
+mod user_notification;
 
 use crate::checks::scan_file;
 use crate::daemon::watch_directories;
-use crate::data_handling::{load_directories};
+use crate::user_notification::notify_user;
+use log::error;
 use std::path::Path;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(file_path) = std::env::args().nth(1) {
-        scan_file(Path::new(&file_path))?;
-    } else {
-        let dirs: Vec<String> = load_directories()?;
-        watch_directories(dirs)?;
+fn main() {
+    env_logger::init();
+    let args: Vec<String> = std::env::args().collect();
+    match args.len() {
+        1 => {
+            if let Err(e) = watch_directories() {
+                error!("Error watching directories: {e}");
+            }
+        }
+        2 => {
+            let path = Path::new(&args[1]);
+            match scan_file(path) {
+                Ok(result) => notify_user(path, &result, true),
+                Err(e) => eprintln!("Error scanning file: {e}"),
+            }
+        }
+        _ => eprintln!("CSS currently only accepts a single file as an argument."),
     }
-    Ok(())
 }

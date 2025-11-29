@@ -10,29 +10,26 @@ This project is intended to serve as a **secure background service**: it silentl
 
 - **Threat Feed Integration**\
   Pulls from multiple reputable malicious hash feeds:
-
   - [abuse.ch MalwareBazaar](https://bazaar.abuse.ch/) (persistent + recent)
   - [Community-maintained GitHub malicious hash lists](https://github.com/romainmarcoux/malicious-hash/) (recent only).
   - [yara-forge](https://github.com/YARAHQ/yara-forge) (currently the only YARA rules source)
 
 - **Python Feed Poller** (`css_update/__init__.py`)
-
   - Fetches and merges hashes from multiple sources asynchronously via `aiohttp` + `asyncio`.
   - Handles both plain text and ZIP-compressed hash exports.
-  - Maintains two hash sets:
-    - **Persistent Hashes** (`/var/lib/css/persistent_hashes.txt`) → long-lived database of known bad hashes.
-    - **Recent Hashes** (`/var/lib/css/hashes.txt`) → short-term / fast-updating database.
+  - Hash files are stored in `/var/lib/css/hashes/` directory, where all files are loaded and merged at runtime.
 
 - **Rust Monitoring Daemon** (`css` binary)
-
-  - Loads hash lists into memory (`HashSet`) for fast O(1) lookups.
-  - Scans monitored directories for file hashes and YARA rules.
-    - Note that at this time the daemon ONLY scans top level files in the given directory.
-  - Detects and reports any match against known malicious hashes.
+  - Loads all hash files from `/var/lib/css/hashes/` into memory (`HashSet`) for fast O(1) lookups.
+  - Computes MD5, SHA1, and SHA256 hashes in parallel using multi-threaded processing for efficient file scanning.
+  - Watches monitored directories **recursively** for new file creation events.
+  - Scans new files against known malicious hashes and YARA rules (loaded from `/var/lib/css/yara_rules/`).
+  - Detects and reports any match against known malicious hashes or YARA rule matches.
+  - **Desktop notifications** using `notify-rust` (Critical for detections, Normal for clean scans).
+  - Falls back to logging if desktop notifications fail.
   - Designed for **continuous background execution** under `systemd`.
 
 - **Systemd Integration**
-
   - **Services**:
     - `css.service` → Daemon for live directory monitoring.
     - `css-update-recent.service` → Handles running css-update with "recent" flag
@@ -49,6 +46,7 @@ This project is intended to serve as a **secure background service**: it silentl
 - Any systemd enabled Linux distribution
 - Python 3.11+ (`aiohttp`, `asyncio`)
 - Rust
+- D-Bus (for desktop notifications)
 
 ### Steps
 
@@ -58,11 +56,12 @@ git clone https://github.com/Sisyphus1813/checksum-sentinel.git
 cd checksum-sentinel
 
 # Run installer
-chmod +x install.sh
+sudo chmod +x install.sh
 ./install.sh
 ```
 
 Installation script will:
+
 - Ask wether you intend to run the application as a monitoring service or only a oneshot scanner.
 - Build the Rust daemon.
 - Install the Python updater.
@@ -78,10 +77,11 @@ Installation script will:
 Manual update:
 
 ```bash
-css_update.py --update-recent
-css_update.py --update-persistent
-css_update.py --update-yara
+sudo css-update --update-recent
+sudo css-update --update-persistent
+sudo css-update --update-yara
 ```
+
 `--yara` can be added to `--update-persistent` or `--update-recent`, and will update the YARA rules as well.
 
 Or use `systemd` timers:
@@ -90,6 +90,7 @@ Or use `systemd` timers:
 sudo systemctl enable --now css-update-recent.timer
 sudo systemctl enable --now css-update-persistent.timer
 ```
+
 Note that the system timers currently only update stored hashes. Yara rules must be updated from manually time to time (I reccomend once a month). Yara rule updates are not currently set up as a system service because the only polled source currently only updates sporatically. This will be mitigated or fixed in a future update.
 
 ### Monitoring Daemon
@@ -112,7 +113,6 @@ To use as a single shot binary:
 css /path/to/file_to_scan
 ```
 
-
 ### Directory Configuration
 
 If running as a systemd daemon, the binary reads directories to monitor from `/etc/css/directories_monitor.json`.\
@@ -121,13 +121,32 @@ An example file:
 
 ```json
 {
-  "directories": [
-    "/home/user/Downloads",
-    "/var/log",
-    "/tmp/test"
-  ]
+  "directories": ["/home/user/Downloads", "/var/log", "/tmp/test"]
 }
 ```
+
+Directories are monitored **recursively**, meaning all subdirectories will also be watched for new file creation events.
+
+---
+
+## Data Storage
+
+- **Hash files**: `/var/lib/css/hashes/` — All files in this directory are loaded and merged. Each file should contain one hash per line (MD5, SHA1, or SHA256).
+- **YARA rules**: `/var/lib/css/yara_rules/` — All `.yar` files in this directory are compiled and used for scanning.
+- **Configuration**: `/etc/css/directories_monitor.json` — JSON file specifying directories to monitor.
+
+---
+
+## Scan Output
+
+When scanning files CSS reports:
+
+- **File information**: Name, path, and computed hashes (MD5, SHA1, SHA256)
+- **Hash match status**: Whether any computed hash matches a known malicious hash
+- **YARA match status**: Whether any YARA rules matched, including the rule identifiers
+- **Verdict**: Summary indicating whether malicious indicators were detected
+
+In daemon mode, results are displayed as desktop notifications. In single-shot mode, results are printed to the console.
 
 ---
 
@@ -153,7 +172,7 @@ If you maintain or have access to a **reliable, well-curated testing corpus** of
 - Add reproducible test cases or corpus integration scripts
 - Improve coverage or validation of rule-based and hash-based detections
 
-Please ensure any submitted corpus data complies with applicable laws and does not contain live, active malware. The goal is to expand testing responsibly while improving the tool’s accuracy and robustness for all users.
+Please ensure any submitted corpus data complies with applicable laws and does not contain live, active malware. The goal is to expand testing responsibly while improving the tool's accuracy and robustness for all users.
 
 ---
 
@@ -169,7 +188,8 @@ Please ensure any submitted corpus data complies with applicable laws and does n
 │   ├── checks.rs                   # Performs the core functionality by computing hashes, and checking the file for either a matching malicious hash or YARA rule.
 │   ├── daemon.rs                   # Handles the filesystem watcher component
 │   ├── data_handling.rs            # Manages configuration, loading monitored directories, known file hashes, and compiling YARA rules from stored sources
-│   └── main.rs                     # Serves as the program entry point, deciding whether to scan a single file passed via CLI or continuously watch directories as a daemon
+│   └── main.rs                     # Serves as the program entry point
+│   └── user_notification.rs        # Handles sending desktop notifications and returning results to console
 │
 ├── systemd/
 │   ├── no-daemon/                    # Alternative unit files if you don’t want to run the watcher daemon
@@ -188,18 +208,21 @@ Please ensure any submitted corpus data complies with applicable laws and does n
 │                                     # moves systemd units, enables timers, fixes SELinux labels
 ├── pyproject.toml                    # Python project metadata, dependencies, and entrypoints
 ├── README.md                         # Project documentation (this file)
-└── uv.lock                           # Python dependency lock (generated by `uv`/pdm/other resolver)
+└── uv.lock                           # Python dependency lock
 
 ```
+
 ---
 
 ## Security Notes
 
 - Checksum-Sentinel does **not** differentiate between Windows/Linux malware; it currently only notifies you when a known malicious hash or file with a matching YARA rule is found, regardless of target platform. At present it does not move files to containment. Work is in progress to integrate Checksum-Sentinel with SELinux and AppArmor to automatically move files to containment if they are flagged with bad hashes or matching YARA rules.
 - All services must run as **root** to monitor system-wide directories and write to /etc/ and /var/ directories.
+- Desktop notifications require a running D-Bus session; if unavailable, results are logged instead.
+
 ---
 
 ## License
 
 This project is licensed under the GNU General Public License (GPL v3).\
-See the `LICENSE` file for full details.
+See the [LICENSE](LICENSE) file for full details.

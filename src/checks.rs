@@ -12,8 +12,13 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-#![allow(unused_imports)]
-
+use crate::data_handling::{load_hashes, load_rules};
+use digest::{Digest as DigestTrait, OutputSizeUser};
+use generic_array::ArrayLength;
+use md5::Md5;
+use sha1::Sha1;
+use sha2::Sha256;
+use std::ops::Add;
 use std::{
     collections::HashSet,
     fs::File,
@@ -22,15 +27,17 @@ use std::{
     sync::mpsc,
     thread,
 };
-use std::ops::Add;
-use md5::Md5;
-use sha1::Sha1;
-use sha2::{Digest, Sha256};
 use yara::Rules;
-use digest::{Digest as DigestTrait, OutputSizeUser};
-use generic_array::ArrayLength;
 
-use crate::data_handling::{load_hashes, load_rules};
+#[derive(Debug, Clone)]
+pub struct ScanResult {
+    pub hash_match: bool,
+    pub yara_match: bool,
+    pub yara_rules: Vec<String>,
+    pub md5: String,
+    pub sha1: String,
+    pub sha256: String,
+}
 
 fn compute_hashes<P: AsRef<Path>>(path: P) -> io::Result<(String, String, String)> {
     let path = path.as_ref();
@@ -58,9 +65,7 @@ fn compute_hashes<P: AsRef<Path>>(path: P) -> io::Result<(String, String, String
         })
     };
 
-    fn spawn_hasher<H>(
-        rx: mpsc::Receiver<Vec<u8>>,
-    ) -> thread::JoinHandle<String>
+    fn spawn_hasher<H>(rx: mpsc::Receiver<Vec<u8>>) -> thread::JoinHandle<String>
     where
         H: DigestTrait + Send + 'static,
         <H as OutputSizeUser>::OutputSize: ArrayLength<u8> + Add,
@@ -90,21 +95,24 @@ fn compute_hashes<P: AsRef<Path>>(path: P) -> io::Result<(String, String, String
     Ok((md5, sha1, sha256))
 }
 
-
-fn check_hash(file: &Path, known_hashes: &HashSet<String>) -> io::Result<bool> {
+fn check_hash(
+    file: &Path,
+    known_hashes: &HashSet<String>,
+) -> io::Result<(bool, String, String, String)> {
     let (md5, sha1, sha256) = compute_hashes(file)?;
-    println!("MD5: {md5}\nSHA1: {sha1}\nSHA256: {sha256}\n");
     let md5_lower = md5.to_ascii_lowercase();
     let sha1_lower = sha1.to_ascii_lowercase();
     let sha256_lower = sha256.to_ascii_lowercase();
     let matching_hash = known_hashes.contains(&md5_lower)
         || known_hashes.contains(&sha1_lower)
         || known_hashes.contains(&sha256_lower);
-    Ok(matching_hash)
+    Ok((matching_hash, md5, sha1, sha256))
 }
 
-
-fn check_rules(file_path: &Path, rules: &Rules) -> Result<(bool, Vec<String>), Box<dyn std::error::Error>> {
+fn check_rules(
+    file_path: &Path,
+    rules: &Rules,
+) -> Result<(bool, Vec<String>), Box<dyn std::error::Error>> {
     let results = rules.scan_file(file_path, 5)?;
     let identifiers: Vec<String> = results
         .iter()
@@ -117,41 +125,19 @@ fn check_rules(file_path: &Path, rules: &Rules) -> Result<(bool, Vec<String>), B
     }
 }
 
-pub fn scan_file(file: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let known_hashes = crate::data_handling::load_hashes()?;
-    let yara_rules = crate::data_handling::load_rules()?;
-    let matching_hash = check_hash(file, &known_hashes)?;
-    let matching_yara = check_rules(file, &yara_rules)?;
-    let mut hits = 0;
-    match matching_hash {
-        true => {
-            println!("****Matching malicious hash found!!****\n");
-            hits += 1;
-        }
-        false => {
-            println!("No matching malicious hash found.\n");
-        }
-    }
-    match matching_yara {
-        (true, identifiers) => {
-            println!("****Matching YARA rule(s) found!!****");
-            hits += 1;
-            for id in identifiers {
-                println!("- {}", id);
-            }
-            println!("\n");
-        }
-        (false, _) => {
-            println!("No matching YARA rule found.\n");
-        }
-    }
-    if hits == 0 {
-        println!("VERDICT: No known malicious indicators detected.");
-    } else if hits == 1 {
-        println!("VERDICT: Indicators suggest the possible presence of malware.");
-    } else if hits == 2 {
-        println!("VERDICT: Multiple indicators suggest the probable presence of malware.");
-    }
-    println!("Note: Detections or the absence thereof do not guarantee compromise nor safety. Results reflect current rule and hash databases.");
-    Ok(())
+pub fn scan_file(file: &Path) -> Result<ScanResult, Box<dyn std::error::Error>> {
+    let known_hashes = load_hashes()?;
+    let yara_rules = load_rules()?;
+    let (hash_match, md5, sha1, sha256) = check_hash(file, &known_hashes)?;
+    let (yara_match, yara_rules) = check_rules(file, &yara_rules)?;
+
+    let result = ScanResult {
+        hash_match,
+        yara_match,
+        yara_rules,
+        md5,
+        sha1,
+        sha256,
+    };
+    Ok(result)
 }

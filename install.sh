@@ -12,7 +12,10 @@ done
 sudo pip install .
 cargo build --release
 sudo mv "$SCRIPT_DIR"/target/release/css /usr/local/bin/css
+sudo restorecon /usr/local/bin/css
 if [ "$daemon" = "y" ]; then
+    USERNAME=$(whoami)
+    sudo sed -i "s/^User=.*/User=$USERNAME/" "$SCRIPT_DIR"/systemd/css.service
     sudo cp "$SCRIPT_DIR"/systemd/css.service /etc/systemd/system/css.service
     sudo cp "$SCRIPT_DIR"/systemd/css-update-persistent.service /etc/systemd/system/css-update-persistent.service
     sudo cp "$SCRIPT_DIR"/systemd/css-update-recent.service /etc/systemd/system/css-update-recent.service
