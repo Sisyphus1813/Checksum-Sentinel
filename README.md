@@ -2,7 +2,7 @@
 
 Checksum Sentinel (CSS) is a Rust project designed to automatically fetch, store, and monitor known malicious file hashes and YARA rules from open source threat intelligence feeds. It integrates with `systemd` services and timers to continuously update hash sets and provide a daemonized monitoring process that checks directories for compromised files.
 
-This project is intended to serve as a **secure background service**: it silently updates threat feeds, stores verified hashes locally, and enables continuous monitoring of system directories for potential malware or unwanted files. In addition, the `checksum-sentinel` binary can also be run in single-shot mode against a specific file, allowing you to check its hash directly without running the daemon. At this time, we provide a binding to update YARA rules, but it must be called manually.
+This project is intended to serve as a **secure background service**: it silently updates threat feeds, stores verified hashes locally, and enables continuous monitoring of system directories for potential malware or unwanted files. In addition, the `css` binary can also be run in single-shot mode against a specific file, allowing you to check its hash directly without running the daemon. At this time, we provide a binding to update YARA rules, but it must be called manually.
 
 ---
 
