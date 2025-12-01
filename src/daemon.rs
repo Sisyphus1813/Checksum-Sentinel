@@ -15,6 +15,7 @@
 use crate::checks::scan_file;
 use crate::data_handling::load_directories;
 use crate::user_notification::notify_user;
+use log::error;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
 use std::sync::mpsc::channel;
@@ -32,7 +33,7 @@ pub fn watch_directories() -> notify::Result<()> {
     loop {
         match rx.recv_timeout(Duration::from_secs(2)) {
             Ok(Ok(event)) => handle_event(event),
-            Ok(Err(e)) => eprintln!("Watch error: {:?}", e),
+            Ok(Err(e)) => error!("Watch error: {:?}", e),
             Err(_) => {}
         }
     }
@@ -44,7 +45,7 @@ fn handle_event(event: Event) {
             if path.is_file() {
                 match scan_file(&path) {
                     Ok(result) => notify_user(&path, &result, false),
-                    Err(e) => eprintln!("Failed to check {:?}: {e}", path),
+                    Err(e) => error!("Failed to check {:?}: {e}", path),
                 }
             }
         }

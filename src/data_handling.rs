@@ -12,17 +12,46 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use log::error;
 use serde::Deserialize;
 use std::collections::HashSet;
+use std::env;
 use std::error::Error;
 use std::fs::{self, File};
-use std::io::{self, BufRead, BufReader};
+use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use yara::{Compiler, Rules};
 
 #[derive(Deserialize)]
 struct Config {
     directories: Vec<String>,
+}
+
+pub fn setup() -> Result<(), Box<dyn Error>> {
+    let user = if let Ok(sudo_user) = env::var("SUDO_USER") {
+        sudo_user
+    } else {
+        env::var("USER")
+            .or_else(|_| env::var("LOGNAME"))
+            .map_err(|_| "Unable to determine username")?
+    };
+    let prerequisites = vec![
+        "/var/lib/css/hashes/",
+        "/var/lib/css/yara_rules/",
+        "/etc/css/",
+    ];
+    for dir in prerequisites {
+        std::fs::create_dir_all(dir)?;
+    }
+    let dir_monitoring_config = Path::new("/etc/css/directories_monitor.json");
+    let default_monitoring_dir = serde_json::json!({
+        "directories": [format!("/home/{}/Downloads/", user)]
+    });
+    if !dir_monitoring_config.exists() {
+        let mut file = File::create(dir_monitoring_config)?;
+        file.write_all(serde_json::to_string_pretty(&default_monitoring_dir)?.as_bytes())?;
+    }
+    Ok(())
 }
 
 pub fn load_directories() -> io::Result<Vec<String>> {
@@ -37,7 +66,7 @@ pub fn load_hashes() -> io::Result<HashSet<String>> {
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(e) => {
-            eprintln!("Warning: could not read directory {}: {e}", dir.display());
+            error!("Warning: could not read directory {}: {e}", dir.display());
             return Ok(set);
         }
     };
@@ -55,7 +84,7 @@ pub fn load_hashes() -> io::Result<HashSet<String>> {
                         }
                     }
                 } else {
-                    eprintln!("Warning: could not open {}", path.display());
+                    error!("Warning: could not open {}", path.display());
                 }
             }
         }

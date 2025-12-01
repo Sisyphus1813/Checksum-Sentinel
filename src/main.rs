@@ -12,33 +12,61 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+mod arg;
 mod checks;
 mod daemon;
 mod data_handling;
+mod poll_sources;
 mod user_notification;
 
 use crate::checks::scan_file;
 use crate::daemon::watch_directories;
+use crate::data_handling::setup;
 use crate::user_notification::notify_user;
+use arg::{Cli, Commands};
+use clap::Parser;
 use log::error;
+use poll_sources::{poll_yara, update};
 use std::path::Path;
 
 fn main() {
     env_logger::init();
-    let args: Vec<String> = std::env::args().collect();
-    match args.len() {
-        1 => {
-            if let Err(e) = watch_directories() {
-                error!("Error watching directories: {e}");
-            }
-        }
-        2 => {
-            let path = Path::new(&args[1]);
+    if let Err(e) = setup() {
+        error!("Failed to complete directory setup process: {e}");
+    }
+    let cli = Cli::parse();
+    match cli.command {
+        Commands::Scan { file } => {
+            let path = Path::new(&file);
             match scan_file(path) {
                 Ok(result) => notify_user(path, &result, true),
                 Err(e) => eprintln!("Error scanning file: {e}"),
             }
         }
-        _ => eprintln!("CSS currently only accepts a single file as an argument."),
+        Commands::Update {
+            recent,
+            persistent,
+            yara,
+        } => {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            rt.block_on(async {
+                let client = reqwest::Client::new();
+                if yara {
+                    if let Err(e) = poll_yara(&client).await {
+                        error!("Error updating YARA rules: {e}");
+                    }
+                }
+                if recent || persistent {
+                    if let Err(e) = update(&client, persistent).await {
+                        eprintln!("Error updating hashes: {e}");
+                    }
+                }
+            })
+        }
+        Commands::Watch => {
+            if let Err(e) = watch_directories() {
+                error!("Encountered an error while attempting to watch directories: {e}");
+            }
+        }
     }
 }

@@ -130,7 +130,6 @@ pub fn scan_file(file: &Path) -> Result<ScanResult, Box<dyn std::error::Error>> 
     let yara_rules = load_rules()?;
     let (hash_match, md5, sha1, sha256) = check_hash(file, &known_hashes)?;
     let (yara_match, yara_rules) = check_rules(file, &yara_rules)?;
-
     let result = ScanResult {
         hash_match,
         yara_match,

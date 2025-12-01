@@ -1,3 +1,4 @@
+#!/bin/bash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 while true; do
@@ -9,10 +10,11 @@ while true; do
     esac
 done
 
-sudo pip install .
-cargo build --release
+cargo build --release || { echo "Build failed"; exit 1; }
 sudo mv "$SCRIPT_DIR"/target/release/css /usr/local/bin/css
-sudo restorecon /usr/local/bin/css
+if [ "$(getenforce)" = "Enforcing" ]; then
+    sudo restorecon /usr/local/bin/css
+fi
 if [ "$daemon" = "y" ]; then
     USERNAME=$(whoami)
     sudo sed -i "s/^User=.*/User=$USERNAME/" "$SCRIPT_DIR"/systemd/css.service
@@ -25,7 +27,9 @@ else
 fi
 sudo cp "$SCRIPT_DIR"/systemd/css-update-persistent.timer /etc/systemd/system/css-update-persistent.timer
 sudo cp "$SCRIPT_DIR"/systemd/css-update-recent.timer /etc/systemd/system/css-update-recent.timer
-sudo restorecon -v /etc/systemd/system/css*.service /etc/systemd/system/css*.timer
+if [ "$(getenforce)" = "Enforcing" ]; then
+    sudo restorecon -v /etc/systemd/system/css*.service /etc/systemd/system/css*.timer
+fi
 sudo systemctl daemon-reload
 sudo systemctl enable --now css-update-persistent.timer
 sudo systemctl enable --now css-update-recent.timer

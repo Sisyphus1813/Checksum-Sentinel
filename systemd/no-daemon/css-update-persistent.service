@@ -3,4 +3,4 @@ Description=Checksum-Sentinel persistent database updater
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/css-update --update-persistent
+ExecStart=/usr/local/bin/css update --persistent
