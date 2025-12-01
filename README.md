@@ -76,16 +76,16 @@ Installation script will:
 Manual update:
 
 ```bash
-sudo checksum-sentinel update --recent
-sudo checksum-sentinel update --persistent
-sudo checksum-sentinel update --yara
+sudo css update --recent
+sudo css update --persistent
+sudo css update --yara
 ```
 
 Flags can be combined:
 
 ```bash
-sudo checksum-sentinel update --recent --persistent --yara
-sudo checksum-sentinel update -r -p -y
+sudo css update --recent --persistent --yara
+sudo css update -r -p -y
 ```
 
 Or use `systemd` timers:
@@ -114,7 +114,7 @@ sudo systemctl disable --now css.service
 To use as a single shot binary:
 
 ```bash
-checksum-sentinel scan /path/to/file_to_scan
+css scan /path/to/file_to_scan
 ```
 
 ### Directory Configuration
